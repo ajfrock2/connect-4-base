@@ -64,6 +64,11 @@ namespace ClassGame {
                 } else {
                     ImGui::Text("Current Player Number: %d", game->getCurrentPlayer()->playerNumber());
                     ImGui::Text("Current Board State: %s", game->stateString().c_str());
+                    std::string gameBoard = game->stateString();
+                    int rowStride;
+                    int boardHeight; 
+                    //TODO change state string to display nicely
+                    //use ImGui::Text(gameBoard.subst(y*rowStride, rowStride.c_str());
                 }
                 ImGui::End();
 

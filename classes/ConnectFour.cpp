@@ -35,21 +35,40 @@ void ConnectFour::setUpBoard()
     startGame();
 }
 
+int ConnectFour::getLowestRow(int col){
+    for(int row = 5; row >= 0; row--){
+        if(!_grid->getSquare(col, row)->bit()){
+            return row;
+        }
+    }
+    return -1;
+}
+
+bool ConnectFour::columnIsFull(int col){
+    if(_grid->getSquare(col, 0)->bit()){
+        return true;
+    }
+    return false;
+}
+
 bool ConnectFour::actionForEmptyHolder(BitHolder &holder)
 {
+    ChessSquare* clickedSquare = dynamic_cast<ChessSquare*>(&holder);
     if (holder.bit()) {
         return false;
     }
     Bit *bit = PieceForPlayer(getCurrentPlayer()->playerNumber() == 0 ? HUMAN_PLAYER : AI_PLAYER);
     if (bit) {
 
-        //Gravity Logic TODO ignore mosue pos, place at bottom most cell
-        int gridX = ((holder.getPosition().x /40) - 1) /2;
-        int gridY = ((holder.getPosition().y /40) - 1) /2;
-        int index = static_cast<int>(7 * gridY + gridX);
-        if(index >= 35 || ownerAt(index)){ //Bottom Row or there's a piece beneath it
+        int colNum = clickedSquare->getColumn();
+        int rowNum = getLowestRow(colNum);
+
+        ChessSquare* newHolder = _grid->getSquare(colNum, rowNum);
+        
+        if(!columnIsFull(colNum)){ 
             bit->setPosition(holder.getPosition());
-            holder.setBit(bit);
+            bit->moveTo(newHolder->getPosition()); 
+            newHolder->setBit(bit);
             endTurn();
             return true; 
         }
@@ -160,7 +179,8 @@ std::string ConnectFour::stateString()
     _grid->forEachSquare([&](ChessSquare* square, int x, int y) {
         Bit *bit = square->bit();
         if (bit) {
-            s[y * 7 + x] = std::to_string(bit->getOwner()->playerNumber()+1)[0];
+            int playerNum = bit->getOwner()->playerNumber();
+            s[y * 7 + x] = (playerNum == 0) ? '1' : '2';
         }
     });
     return s;
@@ -183,6 +203,80 @@ void ConnectFour::setStateString(const std::string &s)
     });
 }
 
+int AILowestRow(const std::string &s, int col){
+    for(int index = 35 + col; index > -1; index-=7){
+        if(s[index] == '0'){
+            return index / 7; 
+        }
+    }
+    return -1;
+}
+bool ConnectFour::isAIBoardFull(const std::string& state) {
+    return state.find('0') == std::string::npos;
+}
+
+
+int findSpotValue(const std::string &state){
+    int Boardsum = 0;
+    int pointValues[42] = { 3, 4,  5,  7,  5, 4, 3,
+                            4, 6,  8, 10,  8, 6, 4,
+                            5, 7, 11, 13, 11, 7, 5,
+                            5, 7, 11, 13, 11, 7, 5,
+                            4, 6,  8, 10,  8, 6, 4,
+                            3, 4,  5,  7,  5, 4, 3,
+                            };
+
+    int index = 0;
+    for(char c: state){
+        if(c == '1'){
+            Boardsum -= pointValues[index];
+        } else if(c == '2'){
+            Boardsum += pointValues[index];
+        }
+        index++;
+    }      
+    return Boardsum;
+}
+
+int ConnectFour::evaluateAIBoard(const std::string& state) {
+    
+    //Initialize and Award points based on grid state
+    int pointSum = findSpotValue(state);
+
+    for( int i=0; i<39; i++ ) { //Changed from 41 to 39, for minor time save
+        char first = state[i];
+
+        //Right facing win check (3 Adjacent on the right)
+        if(i % 7 <= 3){
+            if(first != '0' && first == state[i+1] && first == state[i+2] && first == state[i+3]){
+                pointSum += (first == '2') ? 3000 : -3000;
+            }
+        }
+
+        //Down facing win check (3 Adjacent downward)
+        if(i <= 20){
+            if(first != '0' && first == state[i+7] && first == state[i+14] && first == state[i+21]){
+                pointSum += (first == '2') ? 3000 : -3000;
+            }
+        }
+
+        //Down and right facing win check (3 Adjacent going southeast)
+        if(i <= 17 && i % 7 <= 3){
+            if(first != '0' && first == state[i+8] && first == state[i+16] && first == state[i+24]){
+                pointSum += (first == '2') ? 3000 : -3000;
+            }
+        }
+
+        //Down and left facing win check (3 Adjacent going southwest)
+        if(i <= 20 && i % 7 >= 3){
+            if(first != '0' && first == state[i+6] && first == state[i+12] && first == state[i+18]){
+                pointSum += (first == '2') ? 3000 : -3000;
+            }
+        }
+    }
+    return pointSum; 
+}
+
 
 //
 // this is the function that will be called by the AI
@@ -195,9 +289,10 @@ void ConnectFour::updateAI()
     BitHolder* bestMove = nullptr;
     std::string state = stateString();
 
-    // Traverse all cells, evaluate minimax function for all empty cells
-    _grid->forEachSquare([&](ChessSquare* square, int x, int y) {
-        int index = y * 7 + x;
+    for(int col=0; col<7; col++){
+        int row = AILowestRow(state, col); 
+        if (row == -1) continue;// column full
+        int index = row * 7 + col;
         // Check if cell is empty
         if (state[index] == '0') {
             // Make the move
@@ -207,11 +302,11 @@ void ConnectFour::updateAI()
             state[index] = '0';
             // If the value of the current move is more than the best value, update best
             if (moveVal > bestVal) {
-                bestMove = square;
+                bestMove = _grid->getSquare(col, 0);
                 bestVal = moveVal;
             }
         }
-    });
+    }
 
     // Make the best move
     if(bestMove) {
@@ -220,78 +315,47 @@ void ConnectFour::updateAI()
     }
 }
 
-bool ConnectFour::isAIBoardFull(const std::string& state) {
-    return state.find('0') == std::string::npos;
-}
-
-int ConnectFour::evaluateAIBoard(const std::string& state) {
-    for( int i=0; i<42; i++ ) { //Could change i to 39, time save would be microscpoic
-        char first = state[i];
-
-        //Right facing win check (3 Adjacent on the right)
-        if(i % 7 <= 3){
-            if(first != '0' && first == state[i+1] && first == state[i+2] && first == state[i+3]){
-                return 30;
-            }
-        }
-
-        //Down facing win check (3 Adjacent downward)
-        if(i <= 20){
-            if(first != '0' && first == state[i+7] && first == state[i+14] && first == state[i+21]){
-                return 30;
-            }
-        }
-
-        //Down and right facing win check (3 Adjacent going southeast)
-        if(i <= 17 && i % 7 <= 3){
-            if(first != '0' && first == state[i+8] && first == state[i+16] && first == state[i+24]){
-                return 30;
-            }
-        }
-
-        //Down and left facing win check (3 Adjacent going southwest)
-        if(i <= 20 && i % 7 >= 3){
-            if(first != '0' && first == state[i+6] && first == state[i+12] && first == state[i+18]){
-                return 30;
-            }
-        }
-    }
-    return 0; // No winner
-}
-
 //
 // player is the current player's number (AI or human)
 //
 int ConnectFour::negamax(std::string& state, int depth, int a, int b, int playerColor)
 {
-    //Initial depth
-    if(depth >= 3){
-        return 0;
-    }
-
+    
     int score = evaluateAIBoard(state);
-
-    //If winner exists, return the scoring
-    if(score){
-        return -score;
+    if(playerColor == HUMAN_PLAYER) {
+        score = -score;
     }
+
+    if (abs(score) >= 1000) return score; //Someone likely won, don't contintue calculations
+    if(depth == 6) return score; //Don't recurse to long
 
     //If board is full and no winner, DRAW
     if (isAIBoardFull(state)) {
         return 0;
     }
 
-    int bestVal = -1000;
-    for(int i=0; i<42; i++){
-        if(state[i] == '0'){
-            state[i] = playerColor == HUMAN_PLAYER ? '1' : '2';
+    int bestVal = -10000;
+    for(int col=0; col<7; col++){
+        int row = AILowestRow(state, col); 
+        if(row == -1){
+            continue;
+        }
+        int index = row * 7 + col;
+        if(state[index] == '0'){
+            state[index] = playerColor == HUMAN_PLAYER ? '1' : '2';
             bestVal = std::max(bestVal, -negamax(state, depth+1, -b, -a, -playerColor));
-            state[i] = '0';
+            state[index] = '0';
             a = std::max(a, bestVal);
             if(a >= b){
                 break;
             }
         }
+    }
+
+    //Temp bug fix, but in theory should never be true
+    if (bestVal == -10000) {
+        std::cout << "Bad logic somewhere in negmax" << std::endl;
+        return score; 
     }
     return bestVal;
 }

@@ -32,7 +32,8 @@ private:
     int         negamax(std::string& state, int depth, int a, int b, int playerColor);
     int         evaluateAIBoard(const std::string& state);
     bool        isAIBoardFull(const std::string& state);
-
+    int         getLowestRow(int col);  
+    bool        columnIsFull(int col);
     Grid*       _grid;
 };
 
